@@ -1,37 +1,48 @@
+Parameters:
+  CoffeinInstanceType:
+    Description: Enter t2.micro, m1.small, or m1.large. Default is t2.micro.
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+
+  CoffeinAMI:
+    Type: String
+    Default: ami-00a77ddce40c1d0e5
+    Description: The ID of the custom AMI for this application.
+
+
 Resources:
-  Instance:
-    Type: AWS::EC2::Instance
-    Properties: {}
+  #   Instance:
+  #     Type: AWS::EC2::Instance
+  #     Properties: {}
 
-  FullEC2AccessRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          Effect: Allow
-          Action: ec2:*
-          Resource: '*'
+  # FullEC2AccessRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #         Effect: Allow
+  #         Action: ec2:*
+  #         Resource: '*'
 
-  AIMInstanceProfileTemplate:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      InstanceProfileName: AIMTemplate
-      Path: /
-      Roles:
-        - Ref FullEC2AccessRole
+  # AIMInstanceProfileTemplate:
+  #   Type: AWS::IAM::InstanceProfile
+  #   Properties:
+  #     InstanceProfileName: AIMTemplate
+  #     Path: /
+  #     Roles:
+  #       - Ref FullEC2AccessRole
 
   CoffeinLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
       LaunchTemplateName: CoffeinLaunchTemplate
       LaunchTemplateData:
-        IamInstanceProfile:
-          Arn: !GetAtt AIMInstanceProfileTemplate.Arn
-        DisableApiTermination: true
-        ImageId: ami-00a77ddce40c1d0e5
-        InstanceType: t2.micro
-        KeyName: ImportedKeyPair
+        ImageId: !Ref CoffeinAMI
+        InstanceType: !Ref CoffeinInstanceType
+        KeyName: KeyPair
         SecurityGroupIds:
           - !Ref CoffeinSecGr1
 
