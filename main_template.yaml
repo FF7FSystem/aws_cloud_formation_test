@@ -1,8 +1,8 @@
-AWSTemplateFormatVersion: "2010-09-09"
+AWSTemplateFormatVersion: '2010-09-09'
 Resources:
   WaitConditionHandle:
     Type: AWS::CloudFormation::WaitConditionHandle
-    Properties: { }
+    Properties: {}
 
   CoffeinVPC:
     Type: AWS::EC2::VPC
@@ -14,3 +14,135 @@ Resources:
         - Key: Name
           Value: Coffein-Network
 
+  CoffeinInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: Coffein-InternetGateway
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref CoffeinVPC
+      InternetGatewayId: !Ref CoffeinInternetGateway
+
+  CoffeinPublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CoffeinVPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: Coffein-PublicSubnet-A
+
+  CoffeinPublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CoffeinVPC
+      CidrBlock: 10.0.12.0/24
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: Coffein-PublicSubnet-B
+
+  CoffeinRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref CoffeinVPC
+      Tags:
+        - Key: Name
+          Value: Coffein-RouteTable
+
+  MainInternetRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref CoffeinRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref CoffeinInternetGateway
+
+  CoffeinPublicSubnetAAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref CoffeinRouteTable
+      SubnetId: !Ref CoffeinPublicSubnetA
+
+  CoffeinPublicSubnetBAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref CoffeinRouteTable
+      SubnetId: !Ref CoffeinPublicSubnetB
+
+  CoffeinSecGr1:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http-https-ssh-backendport
+      VpcId: !Ref CoffeinVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 5.152.86.205/32
+      Tags:
+        - Key: Name
+          Value: Coffein-SecGr1
+
+#  KeyPair:
+#    Type: AWS::EC2::KeyPair
+#    Properties:
+#      KeyName: ImportedKeyPair
+#      PublicKeyMaterial: ssh-rsa
+#        AAAAB3NzaC1yc2EAAAADAQABAAABAQDCp0TVvlvihita21Ir3+GsCRjxYDBsFzJ4VZ/2t9+Gj3S6Fc5jrGjA1m7MyhAgGA9OWpeAhgAPMZA3xakq6GQ7q0w77yemBWPQiV2Is+SvTZLHC4S+nAz8ZftXtIHU1nQKBHO+kILMYQ5vS18LYxXxryL14Cu71FRDB6HvK0xAufL8mqWpNmUBFrsqRdZQJpeMib5nmLHYsq6KVeawY6DPjwnJlXER/pb9tOvNP5908/XQYz56wP5jsEcMkC9Q9hQ5vdfJgiDiRIGd0OEm3wjH/0Hd6HyB7oXwjUxkaersTobBf97VKCNLVHS2WUSkFKSIMj3Ns2r8DRcxjXx+WvzP
+
+#Parameters:
+#  CoffeinInstanceType:
+#    Description: Enter t2.micro, m1.small, or m1.large. Default is t2.micro.
+#    Type: String
+#    Default: t2.micro
+#    AllowedValues:
+#      - t2.micro
+#
+#  CoffeinAMI:
+#    Type: String
+#    Default: ami-00a77ddce40c1d0e5
+#    Description: The ID of the custom AMI for this application.
+#
+#Resources:
+  #   Instance:
+  #     Type: AWS::EC2::Instance
+  #     Properties: {}
+
+  # FullEC2AccessRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #         Effect: Allow
+  #         Action: ec2:*
+  #         Resource: '*'
+
+  # AIMInstanceProfileTemplate:
+  #   Type: AWS::IAM::InstanceProfile
+  #   Properties:
+  #     InstanceProfileName: AIMTemplate
+  #     Path: /
+  #     Roles:
+  #       - Ref FullEC2AccessRole
