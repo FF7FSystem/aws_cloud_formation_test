@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Resources:
-  WaitConditionHandle:
-    Type: AWS::CloudFormation::WaitConditionHandle
-    Properties: {}
+  CoffeinBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: coffein-cloudformation-bucket
 
   CoffeinVPC:
     Type: AWS::EC2::VPC
@@ -13,20 +14,17 @@ Resources:
       Tags:
         - Key: Name
           Value: Coffein-Network
-
   CoffeinInternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
         - Key: Name
           Value: Coffein-InternetGateway
-
   VPCGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
       VpcId: !Ref CoffeinVPC
       InternetGatewayId: !Ref CoffeinInternetGateway
-
   CoffeinPublicSubnetA:
     Type: AWS::EC2::Subnet
     Properties:
@@ -38,7 +36,6 @@ Resources:
       Tags:
         - Key: Name
           Value: Coffein-PublicSubnet-A
-
   CoffeinPublicSubnetB:
     Type: AWS::EC2::Subnet
     Properties:
@@ -50,7 +47,6 @@ Resources:
       Tags:
         - Key: Name
           Value: Coffein-PublicSubnet-B
-
   CoffeinRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -58,20 +54,17 @@ Resources:
       Tags:
         - Key: Name
           Value: Coffein-RouteTable
-
   MainInternetRoute:
     Type: AWS::EC2::Route
     Properties:
       RouteTableId: !Ref CoffeinRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref CoffeinInternetGateway
-
   CoffeinPublicSubnetAAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref CoffeinRouteTable
       SubnetId: !Ref CoffeinPublicSubnetA
-
   CoffeinPublicSubnetBAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
@@ -104,45 +97,106 @@ Resources:
         - Key: Name
           Value: Coffein-SecGr1
 
-#  KeyPair:
-#    Type: AWS::EC2::KeyPair
-#    Properties:
-#      KeyName: ImportedKeyPair
-#      PublicKeyMaterial: ssh-rsa
-#        AAAAB3NzaC1yc2EAAAADAQABAAABAQDCp0TVvlvihita21Ir3+GsCRjxYDBsFzJ4VZ/2t9+Gj3S6Fc5jrGjA1m7MyhAgGA9OWpeAhgAPMZA3xakq6GQ7q0w77yemBWPQiV2Is+SvTZLHC4S+nAz8ZftXtIHU1nQKBHO+kILMYQ5vS18LYxXxryL14Cu71FRDB6HvK0xAufL8mqWpNmUBFrsqRdZQJpeMib5nmLHYsq6KVeawY6DPjwnJlXER/pb9tOvNP5908/XQYz56wP5jsEcMkC9Q9hQ5vdfJgiDiRIGd0OEm3wjH/0Hd6HyB7oXwjUxkaersTobBf97VKCNLVHS2WUSkFKSIMj3Ns2r8DRcxjXx+WvzP
+  CoffeinSecurityGroupForLB:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http 8000 port
+      VpcId: !Ref CoffeinVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: Coffein-SecGrForLB
 
-#Parameters:
-#  CoffeinInstanceType:
-#    Description: Enter t2.micro, m1.small, or m1.large. Default is t2.micro.
-#    Type: String
-#    Default: t2.micro
-#    AllowedValues:
-#      - t2.micro
-#
-#  CoffeinAMI:
-#    Type: String
-#    Default: ami-00a77ddce40c1d0e5
-#    Description: The ID of the custom AMI for this application.
-#
-#Resources:
-  #   Instance:
-  #     Type: AWS::EC2::Instance
-  #     Properties: {}
+  CoffeinLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: Coffein-LaunchTemplate
+      LaunchTemplateData:
+        ImageId: !Ref CoffeinAMI
+        InstanceType: !Ref CoffeinInstanceType
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: true
+            DeviceIndex: 0
+            Groups:
+              - !Ref CoffeinSecGr1
+        KeyName: !Ref CoffeinKeyPairName
 
-  # FullEC2AccessRole:
-  #   Type: AWS::IAM::Role
-  #   Properties:
-  #     AssumeRolePolicyDocument:
-  #       Version: '2012-10-17'
-  #       Statement:
-  #         Effect: Allow
-  #         Action: ec2:*
-  #         Resource: '*'
+  CoffeinASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref CoffeinLaunchTemplate
+        Version: !GetAtt CoffeinLaunchTemplate.LatestVersionNumber
+      DesiredCapacity: '2'
+      MaxSize: '3'
+      MinSize: '2'
+      VPCZoneIdentifier:
+        - !Ref CoffeinPublicSubnetA
+        - !Ref CoffeinPublicSubnetB
+      TargetGroupARNs:
+        - !Ref CoffeinTargetGroup
+      Tags:
+        - Key: Name
+          Value: Coffein-AutoScalingGroup
+          PropagateAtLaunch: true
 
-  # AIMInstanceProfileTemplate:
-  #   Type: AWS::IAM::InstanceProfile
-  #   Properties:
-  #     InstanceProfileName: AIMTemplate
-  #     Path: /
-  #     Roles:
-  #       - Ref FullEC2AccessRole
+  CoffeinScalingPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref CoffeinASG
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        TargetValue: 50
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+
+  CoffeinLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - !Ref CoffeinPublicSubnetA
+        - !Ref CoffeinPublicSubnetB
+      SecurityGroups:
+        - !Ref CoffeinSecurityGroupForLB
+      Tags:
+        - Key: Name
+          Value: Coffein-LoadBalancer
+
+  CoffeinApplicatipnLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref CoffeinTargetGroup
+      LoadBalancerArn: !Ref CoffeinLoadBalancer
+      Port: 8000
+      Protocol: HTTP
+
+  CoffeinTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: Coffein-LB-TargetGroup
+      Port: 8000
+      Protocol: HTTP
+      VpcId: !Ref CoffeinVPC
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+      TargetType: instance
+
+Parameters:
+  CoffeinAMI:
+    Description: Suitable custom AMI for current Stack
+    Type: String
+    Default: ami-00a77ddce40c1d0e5
+  CoffeinInstanceType:
+    Description: EC2 instance type. Default is t2.micro.
+    Type: String
+    Default: t2.micro
+  CoffeinKeyPairName:
+    Description: EC2 KeyPair for SSH access, Default aws-formation
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: aws-formation
